@@ -6,9 +6,9 @@ from aiogram.types import BotCommand
 from db import engine
 from models import Base
 from handlers import router
-from tournament_updater import tournament_updater
+from tournament_updater import update_players_stats
 
-from config import TOKEN
+from config import TOKEN, UPDATE_DELAY
 
 
 async def set_commands(bot):
@@ -18,6 +18,14 @@ async def set_commands(bot):
         BotCommand(command="start", description="🚀 Зареєструватися"),
     ]
     await bot.set_my_commands(commands)
+
+
+async def tournament_updater(bot):
+    while True:
+        await update_players_stats(bot)
+
+        # global cooldown between cycles
+        await asyncio.sleep(UPDATE_DELAY)
 
 
 async def main():

@@ -144,7 +144,7 @@ async def check_progress_cmd(message: Message):
     text = (
         "📊 Результат \n\n"
         f"🚗 Танк: {tank_name}\n"
-        f"⚔ Бої: {results.battles}/100\n"
+        f"⚔ Бої: {results.battles} / {GAMES_IN_TOURNAMENT}\n"
         f"💥 Середня шкода: {results.gpg:.2f}\n"
     )
 

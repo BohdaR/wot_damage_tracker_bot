@@ -204,7 +204,7 @@ async def list_participants(message: Message):
 
     for i, player in enumerate(players, start=1):
         text += (
-            f"{i}. {player.username}"
+            f"{i}. {player.username}\n"
         )
 
     await message.answer(text)

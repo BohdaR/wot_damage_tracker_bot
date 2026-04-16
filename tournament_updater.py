@@ -4,7 +4,8 @@ from db import SessionLocal
 from models import Player, PlayerTankSnapshot, PlayerTournamentResult
 from wargaming_api import fetch_tank_stats
 from stats_calculator import calculate_session_stats
-from config import GAMES_IN_TOURNAMENT, RPS_DELAY
+from datetime import datetime
+from config import RPS_DELAY, get_config
 
 
 async def update_players_stats(bot, force_finish=False):
@@ -15,6 +16,9 @@ async def update_players_stats(bot, force_finish=False):
             .join(PlayerTournamentResult, Player.id == PlayerTournamentResult.player_id)
             .where(PlayerTournamentResult.is_finished == false())
         )
+
+        config = await get_config(session)
+        games_in_tournament = config.games_in_tournament
 
         rows = result.all()
 
@@ -52,12 +56,13 @@ async def update_players_stats(bot, force_finish=False):
             results.gpg = session_stats["avg_damage"]
 
             # finish condition
-            if session_stats["battles"] >= GAMES_IN_TOURNAMENT or force_finish:
+            if session_stats["battles"] >= games_in_tournament or force_finish:
                 results.is_finished = True
+                results.finished_at = datetime.utcnow()
 
                 await bot.send_message(
                     player.telegram_id,
-                    "📊 Турнір завершено.\n"
+                    "📊 Турнір завершено.\n\n"
                     f"🏁 Ви зіграли {results.battles} боїв!\n"
                     f" Ваш результат {results.gpg}!"
                 )

@@ -53,3 +53,25 @@ async def get_tank_name(tank_id: int):
         return None
 
     return tank["name"]
+
+
+async def get_tank_by_name(name: str):
+    data = await fetch("encyclopedia/vehicles", {
+        "fields": "name"
+    })
+
+    if data["status"] != "ok":
+        return None
+
+    tanks = data["data"]
+
+    name = name.strip().lower()
+
+    for tank_id, tank in tanks.items():
+        if tank["name"].lower() == name:
+            return {
+                "tank_id": int(tank_id),
+                "tank_name": tank["name"]
+            }
+
+    return None

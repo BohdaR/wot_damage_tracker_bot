@@ -5,17 +5,17 @@ from aiogram.types import Message
 from aiogram import Router, F
 from aiogram.filters import Command
 
-from sqlalchemy import select, delete, desc
+from sqlalchemy import select, delete, desc, false
 
 from db import SessionLocal
 from models import Player, PlayerTankSnapshot, PlayerTournamentResult
 from states import RegisterState
 
-from wargaming_api import get_tank_name
+from wargaming_api import get_tank_by_name
 from register_service import register_player, create_empty_stats
 from tournament_updater import update_players_stats
 
-from config import ADMIN_IDS, TANK_ID, GAMES_IN_TOURNAMENT, RPS_DELAY
+from config import ADMIN_IDS, RPS_DELAY, get_config
 
 router = Router()
 
@@ -60,6 +60,7 @@ async def start_tournament(message: Message):
 
     async with SessionLocal() as session:
 
+        config = await get_config(session)
         result = await session.execute(select(Player))
         players = result.scalars().all()
 
@@ -79,14 +80,17 @@ async def start_tournament(message: Message):
     sent = 0
     failed = 0
 
+    text = (
+        "🏁 Турнір розпочався!\n\n"
+        f"🚗 Танк: {config.tank_name}\n"
+        f"🎯 Кількість боїв: {config.games_in_tournament}\n\n"
+        "📊 Використовуйте команду /progress щоб переглядати свою статистику.\n\n"
+        "🏆 Використовуйте команду /standings щоб переглядати статистику всіх гравців.\n\n"
+    )
+
     for player in players:
         try:
-            await message.bot.send_message(
-                player.telegram_id,
-                "🏁 Турнір розпочався!\n\n"
-                "📊 Використовуйте команду /progress щоб переглядати свою статистику.\n\n"
-                "📊 Використовуйте команду /standings щоб переглядати статистику всіх гравців.\n\n"
-            )
+            await message.bot.send_message(player.telegram_id, text)
             sent += 1
         except Exception:
             failed += 1
@@ -112,10 +116,14 @@ async def end_tournament(message: Message):
 @router.message(Command("progress"))
 async def check_progress_cmd(message: Message):
 
-    tank_name = await get_tank_name(TANK_ID)
+    tank_name = None
     telegram_id = message.from_user.id
 
     async with SessionLocal() as session:
+        config = await get_config(session)
+
+        tank_name = config.tank_name
+        games_in_tournament = config.games_in_tournament
 
         # 1. get player
         result = await session.execute(
@@ -144,7 +152,7 @@ async def check_progress_cmd(message: Message):
     text = (
         "📊 Результат \n\n"
         f"🚗 Танк: {tank_name}\n"
-        f"⚔ Бої: {results.battles} / {GAMES_IN_TOURNAMENT}\n"
+        f"⚔ Бої: {results.battles} / {games_in_tournament}\n"
         f"💥 Середня шкода: {results.gpg:.2f}\n"
     )
 
@@ -156,10 +164,11 @@ async def check_progress_cmd(message: Message):
 
 @router.message(Command("standings"))
 async def tournament_standings(message: Message):
-
-    tank_name = await get_tank_name(TANK_ID)
-
     async with SessionLocal() as session:
+        config = await get_config(session)
+
+        tank_name = config.tank_name
+        games_in_tournament = config.games_in_tournament
 
         result = await session.execute(
             select(Player.username, PlayerTournamentResult.gpg, PlayerTournamentResult.battles)
@@ -173,13 +182,17 @@ async def tournament_standings(message: Message):
         await message.answer("❌ Немає даних.")
         return
 
+    text = "<pre>\n"
+
     # build leaderboard text
-    text = f"🏆 Турнірна таблиця\n\n🚗 Танк: {tank_name}\n\n"
+    text += f"🏆 Турнірна таблиця\n\n🚗 Танк: {tank_name}\n\n"
 
     for i, (username, gpg, battles) in enumerate(rows, start=1):
-        text += f"{i}. {username}: {gpg:.2f} ({battles} / {GAMES_IN_TOURNAMENT})\n"
+        text += f"{i:>3}. {username:.<30} {gpg:0>7.2f} {battles:3}/{games_in_tournament}\n"
 
-    await message.answer(text)
+    text += "</pre>"
+
+    await message.answer(text, parse_mode="HTML")
 
 
 @router.message(Command("participants"))
@@ -293,4 +306,101 @@ async def broadcast(message: Message):
         f"✅ Broadcast finished\n"
         f"📨 Sent: {sent}\n"
         f"❌ Failed: {failed}"
+    )
+
+
+@router.message(Command("set_tank"))
+async def set_tank(message: Message):
+
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ You are not allowed.")
+        return
+
+    args = message.text.split(maxsplit=1)
+
+    if len(args) < 2:
+        await message.answer("Usage: /set_tank <tank name>")
+        return
+
+    query = args[1]
+
+    tank = await get_tank_by_name(query)
+
+    if not tank:
+        await message.answer("❌ Tank not found.")
+        return
+
+    async with SessionLocal() as session:
+        config = await get_config(session)
+
+        # 🔒 prevent breaking active tournament
+        result = await session.execute(
+            select(PlayerTournamentResult).where(
+                PlayerTournamentResult.is_finished == false()
+            )
+        )
+        if result.first():
+            await message.answer(
+                "❌ Tournament is active.\n"
+                "Reset it before changing tank."
+            )
+            return
+
+        config.tank_id = tank["tank_id"]
+        config.tank_name = tank["tank_name"]
+
+        await session.commit()
+
+    await message.answer(
+        f"✅ Tank updated\n\n"
+        f"🚗 {tank['tank_name']}\n"
+        f"🆔 ID: {tank['tank_id']}"
+    )
+
+
+@router.message(Command("set_games"))
+async def set_games(message: Message):
+
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ You are not allowed.")
+        return
+
+    args = message.text.split()
+
+    if len(args) < 2:
+        await message.answer("Usage: /set_games <number>")
+        return
+
+    try:
+        games = int(args[1])
+    except ValueError:
+        await message.answer("❌ Invalid number.")
+        return
+
+    if games <= 0:
+        await message.answer("❌ Must be greater than 0.")
+        return
+
+    async with SessionLocal() as session:
+        config = await get_config(session)
+
+        # 🔒 optional safety: block if active tournament
+        result = await session.execute(
+            select(PlayerTournamentResult).where(
+                PlayerTournamentResult.is_finished == false()
+            )
+        )
+        if result.first():
+            await message.answer(
+                "❌ Tournament is active.\n"
+                "Reset it before changing settings."
+            )
+            return
+
+        config.games_in_tournament = games
+        await session.commit()
+
+    await message.answer(
+        f"✅ Games limit updated\n\n"
+        f"🎯 New limit: {games} battles"
     )

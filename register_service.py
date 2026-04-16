@@ -1,10 +1,10 @@
 from models import Player, PlayerTournamentResult, PlayerTankSnapshot
-from wargaming_api import get_account_id, fetch_tank_stats, get_tank_name
+from wargaming_api import get_account_id, fetch_tank_stats
 
 from sqlalchemy import select, delete
 from db import SessionLocal
 
-from config import TANK_ID
+from config import get_config
 
 
 async def register_player(username: str, telegram_id: int):
@@ -34,18 +34,20 @@ async def register_player(username: str, telegram_id: int):
 
         await session.commit()
 
-        tank_name = await get_tank_name(TANK_ID)
+        config = await get_config(session)
+        tank_name = config.tank_name
 
     return {
         "ok": True,
         "username": username,
         "account_id": account_id,
-        "tank_id": TANK_ID,
         "tank_name": tank_name
     }
 
 
 async def create_empty_stats(session, player: Player):
+    config = await get_config(session)
+    tank_id = config.tank_id
     # 1. delete old tournament data
     await session.execute(
         delete(PlayerTankSnapshot).where(
@@ -60,7 +62,7 @@ async def create_empty_stats(session, player: Player):
     )
 
     # 2. fetch current API stats
-    current_raw = await fetch_tank_stats(player.account_id, TANK_ID)
+    current_raw = await fetch_tank_stats(player.account_id, tank_id)
 
     if not current_raw:
         return None
@@ -68,7 +70,7 @@ async def create_empty_stats(session, player: Player):
     # 3. create snapshot (baseline)
     snapshot = PlayerTankSnapshot(
         player_id=player.id,
-        tank_id=TANK_ID,
+        tank_id=tank_id,
         battles=current_raw["battles"],
         total_damage=current_raw["damage_dealt"]
     )
@@ -76,7 +78,7 @@ async def create_empty_stats(session, player: Player):
     # 4. create stats record (empty state)
     stats = PlayerTournamentResult(
         player_id=player.id,
-        tank_id=TANK_ID,
+        tank_id=tank_id,
         battles=0,
         total_damage=0,
         gpg=0.0,

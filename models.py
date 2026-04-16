@@ -1,9 +1,22 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer, BigInteger, Float, Boolean
+from datetime import datetime
+from sqlalchemy import DateTime, func
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class AppConfig(Base):
+    __tablename__ = "app_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # tournament settings
+    tank_id: Mapped[int] = mapped_column(Integer)
+    tank_name: Mapped[str] = mapped_column(String)
+    games_in_tournament: Mapped[int] = mapped_column(Integer, default=100)
 
 
 class Player(Base):
@@ -42,3 +55,13 @@ class PlayerTournamentResult(Base):
 
     gpg: Mapped[float] = mapped_column(Float, default=0.0)
     is_finished: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
+
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )

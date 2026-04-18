@@ -404,3 +404,23 @@ async def set_games(message: Message):
         f"✅ Games limit updated\n\n"
         f"🎯 New limit: {games} battles"
     )
+
+
+@router.message(Command("clear_stats"))
+async def clear_stats(message: Message):
+
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("❌ You are not allowed.")
+        return
+
+    async with SessionLocal() as session:
+
+        await session.execute(delete(PlayerTankSnapshot))
+        await session.execute(delete(PlayerTournamentResult))
+
+        await session.commit()
+
+    await message.answer(
+        "🧹 Tournament data cleared.\n"
+        "👤 Players remain intact."
+    )

@@ -15,7 +15,6 @@ async def set_commands(bot):
     commands = [
         BotCommand(command="progress", description="📊 Переглянути власну статистику"),
         BotCommand(command="standings", description="📊 Переглянути турнірну таблицю"),
-        BotCommand(command="start", description="🚀 Зареєструватися"),
     ]
     await bot.set_my_commands(commands)
 

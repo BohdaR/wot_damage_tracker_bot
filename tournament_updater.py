@@ -62,9 +62,9 @@ async def update_players_stats(bot, force_finish=False):
 
                 await bot.send_message(
                     player.telegram_id,
-                    "📊 Турнір завершено.\n\n"
+                    "📊 Очікуєте завершення турніру.\n\n"
                     f"🏁 Ви зіграли {results.battles} боїв!\n"
-                    f" Ваш результат {results.gpg}!"
+                    f" Ваша середня шкода за бій склала: {results.gpg}!"
                 )
 
             await session.commit()

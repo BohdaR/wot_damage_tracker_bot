@@ -22,6 +22,24 @@ router = Router()
 
 @router.message(F.text == "/start")
 async def start(message: Message, state: FSMContext):
+    telegram_id = message.from_user.id
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(Player).where(Player.telegram_id == telegram_id)
+        )
+        player = result.scalar_one_or_none()
+
+    # 👤 user already registered
+    if player:
+        await message.answer(
+            "✅ Ви вже зареєстровані!\n\n"
+            f"👤 Нік: {player.username}\n\n"
+        )
+        await state.clear()
+        return
+
+    # 🆕 new user → start registration
     await message.answer("🎮 Надішліть свій нік в танках:")
     await state.set_state(RegisterState.waiting_for_username)
 
